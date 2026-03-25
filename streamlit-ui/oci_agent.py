@@ -262,7 +262,9 @@ def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tup
     api_key: Anthropic API key (overrides ANTHROPIC_API_KEY env var if provided).
     """
     client = _get_client(api_key)
-    messages = list(history)
+    # Keep only the last 6 messages (3 turns) to avoid 413 request_too_large.
+    # Stats NZ tool responses can be large JSON; they balloon the history quickly.
+    messages = list(history[-6:])
     messages.append({"role": "user", "content": user_message})
 
     for _ in range(MAX_ROUNDS):
