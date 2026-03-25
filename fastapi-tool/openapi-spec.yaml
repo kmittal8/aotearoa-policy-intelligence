@@ -1,0 +1,297 @@
+openapi: 3.1.0
+info:
+  title: Aotearoa Policy Intelligence — Stats NZ Tool
+  description: >
+    Custom tool for OCI GenAI Agents providing live access to 914 Stats NZ ADE
+    dataflows (Census, Business Demography, LEED, Iwi, Justice, etc.).
+    All data stays within NZ — OCI sovereign cloud.
+  version: 1.0.0
+
+servers:
+  - url: https://129.146.131.222.nip.io
+
+paths:
+  /search-dataflows:
+    post:
+      operationId: searchDataflows
+      summary: Find which Stats NZ datasets are relevant to the question
+      description: >
+        Search the 914 available Stats NZ dataflows by keyword.
+        Always call this first to discover dataflow IDs before fetching data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchDataflowsRequest'
+      responses:
+        '200':
+          description: List of matching dataflows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchDataflowsResponse'
+
+  /get-dimensions:
+    post:
+      operationId: getDimensions
+      summary: Get valid filter codes for a dataset (geography, ethnicity, age, etc.)
+      description: >
+        Retrieve the dimension structure and valid code values for a dataflow.
+        Use this to find what geography codes, ethnicity codes, or age groups
+        are available before calling /get-data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDimensionsRequest'
+      responses:
+        '200':
+          description: Dimensions with code lists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDimensionsResponse'
+
+  /get-data:
+    post:
+      operationId: getData
+      summary: Fetch actual observations from a Stats NZ dataset
+      description: >
+        Fetch real observations from one dataflow. Apply dimension filters to
+        narrow results (e.g. Auckland only, Māori ethnicity only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetDataRequest'
+      responses:
+        '200':
+          description: Observations with a plain-English summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDataResponse'
+
+  /compare-periods:
+    post:
+      operationId: comparePeriods
+      summary: Compare a metric across Census 2013 / 2018 / 2023
+      description: >
+        The demo killer feature. Pass the three census dataflow IDs and shared
+        filters; returns a trend comparison with percentage changes and a
+        plain-English trend summary ready for the LLM to present.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparePeriodsRequest'
+      responses:
+        '200':
+          description: Period comparison with trend summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparePeriodsResponse'
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check — reports dataflow index status
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ready, indexing]
+                  dataflows_indexed:
+                    type: integer
+
+components:
+  schemas:
+    SearchDataflowsRequest:
+      type: object
+      required: [keywords]
+      properties:
+        keywords:
+          type: array
+          items:
+            type: string
+          description: Keywords to search, e.g. ["census", "Maori", "housing"]
+        limit:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+
+    SearchDataflowsResponse:
+      type: object
+      properties:
+        query_keywords:
+          type: array
+          items:
+            type: string
+        total_found:
+          type: integer
+        dataflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataflowResult'
+
+    DataflowResult:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        agency:
+          type: string
+        version:
+          type: string
+
+    GetDimensionsRequest:
+      type: object
+      required: [dataflow_id]
+      properties:
+        dataflow_id:
+          type: string
+        dimension_id:
+          type: string
+          nullable: true
+
+    GetDimensionsResponse:
+      type: object
+      properties:
+        dataflow_id:
+          type: string
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DimensionInfo'
+
+    DimensionInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        codes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DimensionCode'
+
+    DimensionCode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+
+    GetDataRequest:
+      type: object
+      required: [dataflow_id]
+      properties:
+        dataflow_id:
+          type: string
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+        start_period:
+          type: string
+          nullable: true
+        end_period:
+          type: string
+          nullable: true
+
+    GetDataResponse:
+      type: object
+      properties:
+        dataflow_id:
+          type: string
+        filters_applied:
+          type: object
+          additionalProperties:
+            type: string
+        observation_count:
+          type: integer
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Observation'
+        summary:
+          type: string
+
+    Observation:
+      type: object
+      properties:
+        period:
+          type: string
+        value:
+          nullable: true
+        dimension_values:
+          type: object
+          additionalProperties:
+            type: string
+
+    ComparePeriodsRequest:
+      type: object
+      required: [dataflow_ids, metric_label]
+      properties:
+        dataflow_ids:
+          type: array
+          items:
+            type: string
+          description: One dataflow ID per census year, e.g. [census_2013_id, census_2018_id, census_2023_id]
+        filters:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+        metric_label:
+          type: string
+          description: Human-readable label, e.g. "Māori home ownership rate"
+
+    ComparePeriodsResponse:
+      type: object
+      properties:
+        metric_label:
+          type: string
+        filters_applied:
+          type: object
+          additionalProperties:
+            type: string
+        comparisons:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeriodComparison'
+        trend_summary:
+          type: string
+
+    PeriodComparison:
+      type: object
+      properties:
+        dataflow_id:
+          type: string
+        period:
+          type: string
+        value:
+          nullable: true
+        change_from_previous:
+          type: string
+          nullable: true
