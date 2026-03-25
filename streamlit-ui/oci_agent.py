@@ -6,6 +6,7 @@ Tools are executed against the FastAPI service running on localhost:8000.
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 import urllib3
 urllib3.disable_warnings()
@@ -241,7 +242,7 @@ def _build_payload(name: str, params: dict) -> dict:
 
 
 # ── Anthropic client ───────────────────────────────────────────────────────
-def _get_client(api_key: str | None = None) -> anthropic.Anthropic:
+def _get_client(api_key: Optional[str] = None) -> anthropic.Anthropic:
     key = api_key or _cfg("ANTHROPIC_API_KEY")
     if not key:
         raise ValueError(
@@ -252,7 +253,7 @@ def _get_client(api_key: str | None = None) -> anthropic.Anthropic:
 
 
 # ── Public API ─────────────────────────────────────────────────────────────
-def chat(history: list, user_message: str, api_key: str | None = None) -> tuple[str, list]:
+def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tuple[str, list]:
     """
     Send a user message, run the function-calling loop, and return
     (answer_text, updated_history).
