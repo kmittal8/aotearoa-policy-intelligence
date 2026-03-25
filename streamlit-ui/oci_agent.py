@@ -262,9 +262,9 @@ def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tup
     api_key: Anthropic API key (overrides ANTHROPIC_API_KEY env var if provided).
     """
     client = _get_client(api_key)
-    # Keep only the last 6 messages (3 turns) to avoid 413 request_too_large.
-    # Stats NZ tool responses can be large JSON; they balloon the history quickly.
-    messages = list(history[-6:])
+    # Only pass prior clean text turns — tool call/result payloads from Stats NZ
+    # can be hundreds of KB each and quickly exceed Anthropic's 200k token limit.
+    messages = list(history)
     messages.append({"role": "user", "content": user_message})
 
     for _ in range(MAX_ROUNDS):
@@ -276,7 +276,7 @@ def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tup
             messages=messages,
         )
 
-        # Append assistant response to history
+        # Append assistant response to in-turn messages
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason == "end_turn":
@@ -284,14 +284,24 @@ def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tup
                 (block.text for block in response.content if block.type == "text"),
                 "(No response text)",
             )
-            return answer, messages
+            # Return only the clean user↔assistant text for next turn's history —
+            # strip all tool_use/tool_result blocks to keep payload small.
+            clean_history = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": answer},
+            ]
+            return answer, clean_history
 
         if response.stop_reason != "tool_use":
             answer = next(
                 (block.text for block in response.content if block.type == "text"),
                 f"(Unexpected stop reason: {response.stop_reason})",
             )
-            return answer, messages
+            clean_history = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": answer},
+            ]
+            return answer, clean_history
 
         # Extract tool_use blocks and execute in parallel
         tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
