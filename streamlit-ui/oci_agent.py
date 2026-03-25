@@ -315,6 +315,10 @@ def chat(history: list, user_message: str, api_key: Optional[str] = None) -> tup
             for future in as_completed(futures):
                 i = futures[future]
                 result_str = future.result()
+                # Truncate large tool results — Stats NZ responses can be
+                # hundreds of KB of JSON and blow past Anthropic's limits.
+                if len(result_str) > 15000:
+                    result_str = result_str[:15000] + "\n...[truncated]"
                 tool_results[i] = {
                     "type": "tool_result",
                     "tool_use_id": tool_use_blocks[i].id,
